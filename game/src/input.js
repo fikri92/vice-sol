@@ -1,53 +1,71 @@
-// Keyboard and pointer input. Held keys give a steering direction; one-shot presses (start or
-// restart, pause) are queued as bit flags and taken once by the loop, so a press between two
-// frames is never lost and never counted twice.
+// Keyboard and pointer input. Held keys are polled each step; one-shot presses (enter car,
+// switch weapon, pause) are queued as flags and consumed once so a press between frames is
+// never lost. Mouse steering feeds the aim direction, mouse buttons fire.
 
-export const ACTION_CONFIRM = 1;
-export const ACTION_PAUSE = 2;
+export const ACTION_ENTER = 1;
+export const ACTION_WEAPON = 2;
+export const ACTION_PAUSE = 4;
+export const ACTION_HORN = 8;
 
-const LEFT = new Set(['ArrowLeft', 'KeyA']);
-const RIGHT = new Set(['ArrowRight', 'KeyD']);
-const CONFIRM = new Set(['Space', 'Enter']);
-const PAUSE = new Set(['KeyP', 'Escape']);
+export function createInput() {
+  const held = new Set();
+  const queue = [];
+  const mouse = { x: 0, y: 0, down: false, aimX: 1, aimY: 0 };
+  return { held, queue, mouse };
+}
 
-export function createInput(target) {
-  let left = false;
-  let right = false;
-  let actions = 0;
-
+/** Wire the input to the page: keyup/keydown, pointer aim and click-to-fire. */
+export function attachInput(input, game, shotMode) {
   window.addEventListener('keydown', (event) => {
-    if (LEFT.has(event.code)) left = true;
-    else if (RIGHT.has(event.code)) right = true;
-    else if (CONFIRM.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_CONFIRM;
-    } else if (PAUSE.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_PAUSE;
-    } else return;
-    event.preventDefault();
+    if (event.repeat) return;
+    const code = event.code;
+    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftLeft', 'ShiftRight', 'Space'].includes(code)) {
+      input.held.add(code);
+      event.preventDefault();
+    }
+    if (!event.repeat) {
+      if (code === 'KeyF' || code === 'KeyE') input.queue.push(ACTION_ENTER);
+      if (code === 'KeyQ') input.queue.push(ACTION_WEAPON);
+      if (code === 'KeyP' || code === 'Escape') input.queue.push(ACTION_PAUSE);
+      if (code === 'KeyH') input.queue.push(ACTION_HORN);
+    }
   });
-  window.addEventListener('keyup', (event) => {
-    if (LEFT.has(event.code)) left = false;
-    else if (RIGHT.has(event.code)) right = false;
-  });
-  // A key released while the tab is hidden never sends keyup: let go of everything on blur.
-  window.addEventListener('blur', () => {
-    left = false;
-    right = false;
-  });
-  target.addEventListener('pointerdown', () => {
-    actions |= ACTION_CONFIRM;
-  });
+  window.addEventListener('keyup', (event) => input.held.delete(event.code));
+  window.addEventListener('blur', () => input.held.clear());
 
-  return {
-    /** -1 for left, 1 for right, 0 for neither or both. */
-    direction() {
-      return (right ? 1 : 0) - (left ? 1 : 0);
-    },
-    /** The one-shot presses since the last call, as ACTION_* flags. */
-    takeActions() {
-      const taken = actions;
-      actions = 0;
-      return taken;
-    },
+  const canvas = document.getElementById('game');
+  const updateAim = (event) => {
+    const ray = game.camera.groundPoint(event.clientX, event.clientY);
+    const pos = game.player.player.pos;
+    if (ray) {
+      input.mouse.aimX = ray.x - pos.x;
+      input.mouse.aimY = ray.z - pos.z;
+    }
   };
+  window.addEventListener('pointermove', updateAim);
+  canvas.addEventListener('pointerdown', (event) => {
+    input.mouse.down = true;
+    if (shotMode) return;
+    updateAim(event);
+  });
+  window.addEventListener('pointerup', () => { input.mouse.down = false; });
+}
+
+/** Signed axis: 1 when any positive key is held, -1 for negative, 0 for neither or both. */
+export function axis(input, positive, negative) {
+  return (input.held.has(positive) ? 1 : 0) - (input.held.has(negative) ? 1 : 0);
+}
+
+/** Signed axis from either the WASD or arrow pair for one direction. */
+export function keyAxis(input, wasd, arrow, wasdNeg, arrowNeg) {
+  const p = input.held.has(wasd) || input.held.has(arrow);
+  const n = input.held.has(wasdNeg) || input.held.has(arrowNeg);
+  return (p ? 1 : 0) - (n ? 1 : 0);
+}
+
+/** Consume and return the queued one-shot actions since the last call. */
+export function takeActions(input) {
+  let flags = 0;
+  while (input.queue.length > 0) flags |= input.queue.shift();
+  return flags;
 }

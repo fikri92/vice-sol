@@ -3,17 +3,65 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Block Dodger</title>
+<title>VICE SOL</title>
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #11141b; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  /* Read aloud, never shown: the status line screen readers announce. */
-  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #9fd4ec; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; font: 600 16px/1.35 "Trebuchet MS", Verdana, sans-serif; color: #fff; user-select: none; }
+  .panel { position: absolute; background: rgba(16, 28, 44, 0.55); border-radius: 14px; padding: 10px 14px; backdrop-filter: blur(2px); box-shadow: 0 2px 10px rgba(0,0,0,0.25); }
+  #cash { top: 14px; right: 18px; font-size: 24px; color: #b6f7c1; text-shadow: 0 1px 2px rgba(0,0,0,.5); }
+  #wanted { top: 14px; right: 150px; font-size: 22px; letter-spacing: 3px; color: #ffd75e; text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+  #bars { top: 14px; left: 18px; width: 210px; }
+  .bar { height: 14px; border-radius: 7px; margin: 5px 0; background: rgba(255,255,255,.18); overflow: hidden; }
+  .bar > i { display: block; height: 100%; border-radius: 7px; transition: width .15s; }
+  #hpfill { background: linear-gradient(90deg, #57e389, #b6f7c1); }
+  #arfill { background: linear-gradient(90deg, #62b0ff, #bfe0ff); }
+  #weapon { bottom: 16px; right: 18px; font-size: 17px; }
+  #speedo { bottom: 16px; right: 18px; font-size: 17px; display: none; }
+  #speedo b { font-size: 30px; }
+  #banner { top: 14px; left: 50%; transform: translateX(-50%); font-size: 19px; color: #ffe9a8; white-space: nowrap; text-shadow: 0 1px 3px #000; }
+  #objective { bottom: 18px; left: 50%; transform: translateX(-50%); font-size: 16px; color: #fff; white-space: nowrap; text-shadow: 0 1px 3px #000; background: rgba(16,28,44,.6); border-radius: 10px; padding: 7px 14px; }
+  #notes { top: 74px; right: 18px; text-align: right; font-size: 15px; }
+  #notes div { margin: 4px 0; background: rgba(16,28,44,.6); border-radius: 9px; padding: 6px 10px; }
+  #subtitle { bottom: 64px; left: 50%; transform: translateX(-50%); max-width: 70%; text-align: center; font-size: 18px; background: rgba(10,16,28,.72); border-radius: 12px; padding: 10px 18px; display: none; }
+  #subtitle b { color: #ffd75e; margin-right: 8px; }
+  #minimap { position: absolute; left: 18px; bottom: 14px; width: 168px; height: 168px; border-radius: 50%; box-shadow: 0 2px 12px rgba(0,0,0,.4); border: 3px solid rgba(16,28,44,.72); }
+  #overlay { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: linear-gradient(180deg, #67b7e6, #ffd9a0); color: #17263c; font: 700 20px/1.5 "Trebuchet MS", Verdana, sans-serif; text-align: center; }
+  #overlay[hidden] { display: none; }
+  .panel[hidden] { display: none; }
+  #overlay h1 { font-size: 74px; margin: 0; color: #ff7b54; letter-spacing: 6px; text-shadow: 3px 3px 0 #17263c; }
+  #overlay p { margin: 6px 0; }
+  #overlay button { font: 700 22px "Trebuchet MS"; padding: 12px 34px; margin-top: 18px; border: 0; border-radius: 12px; background: #ff7b54; color: #fff; cursor: pointer; }
+  #overlay small { margin-top: 16px; font-weight: 400; font-size: 15px; }
 </style>
 </head>
 <body>
-<canvas id="game" aria-label="Block Dodger: move the paddle left and right to dodge falling blocks and catch coins"></canvas>
-<p id="status" role="status" aria-live="polite"></p>
+<canvas id="game" aria-label="VICE SOL: an open-world crime game in the sunlit coastal city of Vice Sol"></canvas>
+<div id="hud" hidden>
+  <div id="bars" class="panel">
+    <div class="bar"><i id="hpfill" style="width:100%"></i></div>
+    <div class="bar"><i id="arfill" style="width:100%"></i></div>
+  </div>
+  <div id="banner" class="panel" hidden></div>
+  <div id="cash" class="panel">$0</div>
+  <div id="wanted" class="panel"></div>
+  <canvas id="minimap" width="168" height="168"></canvas>
+  <div id="objective" class="panel" hidden></div>
+  <div id="weapon" class="panel">FISTS</div>
+  <div id="speedo" class="panel"><b>0</b> KM/H</div>
+  <div id="notes"></div>
+  <div id="subtitle"><b></b><span></span></div>
+</div>
+<div id="overlay">
+  <h1>VICE SOL</h1>
+  <p>Sun, chrome and trouble on the Vice Sol strip.</p>
+  <p>WASD move / drive &middot; F enter or exit car &middot; Mouse aim &middot; Click or Space fire &middot; Q weapon &middot; Shift sprint</p>
+  <button id="startBtn">START</button>
+  <small>As Rico Vance: run errands for Mira Solano, outrun Detective Hale, don't trust The Broker.</small>
+</div>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.min.js" } }
+</script>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
